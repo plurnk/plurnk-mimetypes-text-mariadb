@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import TextMariadb from "./TextMariadb.ts";
 
 const metadata = {
-    mimetype: "text/x-mariadb-sql",
+    mimetype: "text/x-mysql",
     glyph: "🐬",
     extensions: [".sql"] as const,
 };
@@ -11,7 +11,7 @@ const metadata = {
 describe("TextMariadb — instantiation", () => {
     it("instantiates with metadata", () => {
         const h = new TextMariadb(metadata);
-        assert.equal(h.mimetype, "text/x-mariadb-sql");
+        assert.equal(h.mimetype, "text/x-mysql");
         assert.equal(h.glyph, "🐬");
     });
 });

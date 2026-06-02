@@ -1,7 +1,7 @@
 {
     "name": "@plurnk/plurnk-mimetypes-text-mariadb",
-    "version": "0.1.0",
-    "description": "text/x-mariadb-sql mimetype handler for plurnk-service. ANTLR-backed extraction via grammars-v4.",
+    "version": "0.2.0",
+    "description": "text/x-mysql / text/x-mariadb mimetype handler for plurnk-service. ANTLR-backed extraction via grammars-v4.",
     "type": "module",
     "license": "MIT",
     "publishConfig": {
@@ -14,7 +14,14 @@
         "kind": "mimetype",
         "handlers": [
             {
-                "name": "text/x-mariadb-sql",
+                "name": "text/x-mysql",
+                "glyph": "\ud83d\udc2c",
+                "extensions": [
+                    ".sql"
+                ]
+            },
+            {
+                "name": "text/x-mariadb",
                 "glyph": "\ud83d\udc2c",
                 "extensions": [
                     ".sql"
