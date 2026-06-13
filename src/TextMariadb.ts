@@ -46,11 +46,22 @@ class TextMariadbVisitor extends withExtractor(MariaDBParserVisitor) {
         const name = sqlNameText(tn);
         if (!name) return null;
         this.addSymbol("class", name, ctx);
-        const decls = findDescendants(ctx, "ColumnDeclarationContext");
+        const decls = collectDescendants(ctx, "ColumnDeclarationContext");
         for (const d of decls) {
             const uid = (d as { uid?: () => unknown }).uid?.();
             const colName = sqlNameText(uid);
             if (colName) this.addSymbol("field", colName, ctx);
+        }
+        // Foreign keys are cross-table dependencies: this table USES the
+        // referenced table. The referenced tableName lives under a distinct
+        // referenceDefinition context (not the table's own tableName), so no
+        // self-reference. The table's own name is also a TableNameContext, so
+        // we scope the scan to referenceDefinition rather than the whole table.
+        for (const fk of collectDescendants(ctx, "ReferenceDefinitionContext")) {
+            for (const tn of collectDescendants(fk, "TableNameContext")) {
+                const fkName = sqlNameText(tn);
+                if (fkName) this.addRef("use", fkName, tn as never, { container: name });
+            }
         }
         return null;
     };
@@ -76,6 +87,10 @@ class TextMariadbVisitor extends withExtractor(MariaDBParserVisitor) {
         const fid = ctx.fullId?.();
         const name = sqlNameText(fid);
         if (name) this.addSymbol("class", name, ctx);
+        // A view USES every table its SELECT reads — the core SQL graph edge
+        // (view → use → source tables). container = the view being created.
+        // The view's own name is a fullId, not a tableName, so no self-ref.
+        if (name) this.refTableNames(ctx, name);
         return null;
     };
 
@@ -84,6 +99,13 @@ class TextMariadbVisitor extends withExtractor(MariaDBParserVisitor) {
         const uid = ctx.uid?.();
         const name = sqlNameText(uid);
         if (name) this.addSymbol("field", name, ctx);
+        // An index attaches to its ON table. The index name is a uid, not a
+        // tableName, so the sole TableNameContext is the ON target.
+        if (name) {
+            const onTable = collectDescendants(ctx, "TableNameContext")[0];
+            const onName = sqlNameText(onTable);
+            if (onName) this.addRef("use", onName, onTable as never, { container: name });
+        }
         return null;
     };
 
@@ -97,6 +119,10 @@ class TextMariadbVisitor extends withExtractor(MariaDBParserVisitor) {
         const fid = ctx._thisTrigger ?? collectChildren(ctx, "fullId")[0];
         const name = sqlNameText(fid);
         if (name) this.addSymbol("method", name, ctx);
+        // A trigger references its ON table and every table its body touches.
+        // The trigger name is a fullId (handled above), distinct from the
+        // TableNameContext nodes, so it never self-references.
+        if (name) this.refTableNames(ctx, name);
         return null;
     };
 
@@ -131,6 +157,17 @@ class TextMariadbVisitor extends withExtractor(MariaDBParserVisitor) {
         if (name) this.addSymbol("method", name, ctx);
         return null;
     };
+
+    // Emit a `use` ref for every tableName descendant under `ctx`, owned by
+    // the created object `container`. The created object's own name is a
+    // fullId/uid (distinct context), so it never self-references; FK
+    // references are handled in visitColumnCreateTable.
+    private refTableNames(ctx: unknown, container: string): void {
+        for (const tn of collectDescendants(ctx, "TableNameContext")) {
+            const tableName = sqlNameText(tn);
+            if (tableName) this.addRef("use", tableName, tn as never, { container });
+        }
+    }
 }
 
 function sqlNameText(ctx: unknown): string | null {
@@ -159,19 +196,21 @@ function collectChildren(ctx: unknown, methodName: string): unknown[] {
     return raw ? [raw] : [];
 }
 
-function findDescendants(root: unknown, ctxName: string): unknown[] {
+// Recursive descendant collection by ANTLR context class name. The visitor
+// prunes subtrees (CREATE handlers don't visitChildren), so refs are gathered
+// by walking the parse tree directly — like the column collection, but deep.
+function collectDescendants(ctx: unknown, className: string): unknown[] {
     const out: unknown[] = [];
-    const stack: unknown[] = [root];
-    while (stack.length > 0) {
-        const node = stack.pop() as {
-            constructor?: { name?: string };
-            getChildCount?: () => number;
-            getChild?: (i: number) => unknown;
-        };
-        if (!node) continue;
-        if (node.constructor?.name === ctxName) out.push(node);
-        const count = node.getChildCount?.() ?? 0;
-        for (let i = 0; i < count; i += 1) stack.push(node.getChild?.(i));
-    }
+    const walk = (node: unknown): void => {
+        const children = (node as { children?: unknown[] }).children;
+        if (!Array.isArray(children)) return;
+        for (const child of children) {
+            if ((child as { constructor?: { name?: string } })?.constructor?.name === className) {
+                out.push(child);
+            }
+            walk(child);
+        }
+    };
+    walk(ctx);
     return out;
 }
