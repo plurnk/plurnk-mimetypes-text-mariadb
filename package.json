@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-mimetypes-text-mariadb",
-    "version": "0.4.7",
+    "version": "1.0.0",
     "description": "text/x-mysql / text/x-mariadb mimetype handler for plurnk-service. ANTLR-backed extraction via grammars-v4.",
     "type": "module",
     "license": "MIT",
